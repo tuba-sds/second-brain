@@ -5,14 +5,18 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, ForbiddenError } from "@/lib/rbac";
 import { createAuditLog } from "@/lib/audit";
 
+// Granted/revoked by email rather than userId: an admin picking a role for a
+// colleague thinks in terms of their email address, not an internal id. The
+// target user must have signed in at least once already (so a User row
+// exists) — Second Brain has no invite-by-email flow, only Google OAuth.
 const GrantRoleSchema = z.object({
-  userId: z.string().min(1),
+  email: z.string().email(),
   role: z.enum(["FOUNDER", "ADMIN", "MANAGER", "TEAM_MEMBER"]),
   expiresAt: z.string().datetime().optional(),
 });
 
 const RevokeRoleSchema = z.object({
-  userId: z.string().min(1),
+  email: z.string().email(),
 });
 
 export async function POST(
@@ -28,7 +32,7 @@ export async function POST(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { userId, role, expiresAt } = parsed.data;
+  const { email, role, expiresAt } = parsed.data;
 
   try {
     await requireRole(session.user.id, params.workspaceId, "ADMIN");
@@ -39,16 +43,24 @@ export async function POST(
     throw err;
   }
 
+  const targetUser = await prisma.user.findUnique({ where: { email } });
+  if (!targetUser) {
+    return NextResponse.json(
+      { error: "no user with that email has signed in yet" },
+      { status: 404 }
+    );
+  }
+
   const assignment = await prisma.$transaction(async (tx) => {
     const created = await tx.roleAssignment.upsert({
-      where: { userId_workspaceId: { userId, workspaceId: params.workspaceId } },
+      where: { userId_workspaceId: { userId: targetUser.id, workspaceId: params.workspaceId } },
       update: {
         role,
         grantedById: session.user.id,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
       },
       create: {
-        userId,
+        userId: targetUser.id,
         workspaceId: params.workspaceId,
         role,
         grantedById: session.user.id,
@@ -84,7 +96,7 @@ export async function DELETE(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { userId } = parsed.data;
+  const { email } = parsed.data;
 
   try {
     await requireRole(session.user.id, params.workspaceId, "ADMIN");
@@ -95,8 +107,13 @@ export async function DELETE(
     throw err;
   }
 
+  const targetUser = await prisma.user.findUnique({ where: { email } });
+  if (!targetUser) {
+    return NextResponse.json({ error: "no such user" }, { status: 404 });
+  }
+
   const existing = await prisma.roleAssignment.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId: params.workspaceId } },
+    where: { userId_workspaceId: { userId: targetUser.id, workspaceId: params.workspaceId } },
   });
   if (!existing) {
     return NextResponse.json({ error: "role assignment not found" }, { status: 404 });

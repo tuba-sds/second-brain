@@ -83,3 +83,53 @@ export async function getDocumentForProcessing(
   );
   return result.rows[0] ?? null;
 }
+
+export async function getDocumentMeta(
+  documentId: string
+): Promise<{ storagePath: string; originalFilename: string; displayTitle: string } | null> {
+  const result = await pool.query(
+    `SELECT "storagePath", "originalFilename", "displayTitle" FROM "Document"
+     WHERE id = $1 AND "deletedAt" IS NULL`,
+    [documentId]
+  );
+  return result.rows[0] ?? null;
+}
+
+interface KeyDecisionToInsert {
+  decisionText: string;
+  decisionDate?: string;
+  confidence: number;
+}
+
+export async function saveSummaryAndDecisions(
+  documentId: string,
+  summary: string,
+  keyDecisions: KeyDecisionToInsert[]
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO "DocumentSummary" (id, "documentId", summary, "createdAt")
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT ("documentId") DO UPDATE SET summary = EXCLUDED.summary`,
+      [randomUUID(), documentId, summary]
+    );
+    // Replaces prior decisions wholesale rather than diffing — this only ever
+    // runs once per document today (no re-summarize trigger exists yet).
+    await client.query('DELETE FROM "KeyDecision" WHERE "documentId" = $1', [documentId]);
+    for (const kd of keyDecisions) {
+      await client.query(
+        `INSERT INTO "KeyDecision" (id, "documentId", "decisionText", "decisionDate", confidence, "createdAt")
+         VALUES ($1, $2, $3, $4, $5, now())`,
+        [randomUUID(), documentId, kd.decisionText, kd.decisionDate ? new Date(kd.decisionDate) : null, kd.confidence]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}

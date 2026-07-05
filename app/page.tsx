@@ -58,6 +58,7 @@ export default async function Home() {
         {workspaces.map((workspace, i) => {
           const role = roles[i];
           const canUpload = !!role && ROLE_RANK[role] >= ROLE_RANK.MANAGER;
+          const canAdmin = !!role && ROLE_RANK[role] >= ROLE_RANK.ADMIN;
           return (
             <div
               key={workspace.id}
@@ -70,6 +71,14 @@ export default async function Home() {
                 <p className="text-xs text-neutral-500">{role}</p>
               </div>
               <div className="flex gap-4 text-sm">
+                {canAdmin && (
+                  <Link
+                    href={`/workspaces/${workspace.id}/admin`}
+                    className="text-neutral-500 hover:text-neutral-900"
+                  >
+                    Admin
+                  </Link>
+                )}
                 {canUpload && (
                   <Link
                     href={`/workspaces/${workspace.id}/upload`}
@@ -78,6 +87,12 @@ export default async function Home() {
                     Upload
                   </Link>
                 )}
+                <Link
+                  href={`/workspaces/${workspace.id}/documents`}
+                  className="text-neutral-500 hover:text-neutral-900"
+                >
+                  Documents
+                </Link>
                 <Link
                   href={`/chat/${workspace.id}`}
                   className="font-medium text-neutral-900 hover:underline"

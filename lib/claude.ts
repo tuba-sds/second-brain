@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { RetrievedChunk } from "@/lib/retrieval";
 import { RespondWithCitationsSchema, type RespondWithCitations } from "@/lib/schemas/chat";
+import { SummarizeDocumentSchema, type SummarizeDocumentResult } from "@/lib/schemas/document";
 
 export const FALLBACK_ANSWER = "I don't have that information in the knowledge base.";
 
@@ -93,4 +94,68 @@ export async function answerFromChunks(params: {
   }
 
   return RespondWithCitationsSchema.parse(toolUse.input);
+}
+
+const SUMMARIZE_SYSTEM_PROMPT =
+  "You summarize internal company documents factually and concisely, and flag any concrete decisions stated in them. Never invent information not present in the document.";
+
+const RECORD_SUMMARY_TOOL: Anthropic.Tool = {
+  name: "record_summary",
+  description: "Record a concise summary and any key decisions found in the document. Call exactly once.",
+  input_schema: {
+    type: "object",
+    properties: {
+      summary: {
+        type: "string",
+        description: "2-4 sentence plain-language summary of the document.",
+      },
+      keyDecisions: {
+        type: "array",
+        description: "Concrete decisions stated in the document, if any. Empty array if none.",
+        items: {
+          type: "object",
+          properties: {
+            decisionText: { type: "string" },
+            decisionDate: {
+              type: "string",
+              description: "ISO date if a date is stated in the document for this decision; omit otherwise.",
+            },
+            confidence: {
+              type: "number",
+              description: "0.0-1.0 confidence this is an actual decision, not a general statement.",
+            },
+          },
+          required: ["decisionText", "confidence"],
+        },
+      },
+    },
+    required: ["summary", "keyDecisions"],
+  },
+};
+
+export async function summarizeDocument(params: {
+  title: string;
+  text: string;
+}): Promise<SummarizeDocumentResult> {
+  const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
+
+  const response = await getClient().messages.create({
+    model,
+    max_tokens: 1024,
+    system: SUMMARIZE_SYSTEM_PROMPT,
+    tools: [RECORD_SUMMARY_TOOL],
+    tool_choice: { type: "tool", name: "record_summary" },
+    messages: [
+      { role: "user", content: `Document title: ${params.title}\n\n${params.text}` },
+    ],
+  });
+
+  const toolUse = response.content.find(
+    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+  );
+  if (!toolUse) {
+    throw new Error("Claude did not return a record_summary tool call");
+  }
+
+  return SummarizeDocumentSchema.parse(toolUse.input);
 }

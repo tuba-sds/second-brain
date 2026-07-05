@@ -4,7 +4,7 @@ An internal, self-hosted AI knowledge base. Founders and managers upload
 documents; employees chat with an AI that answers only from uploaded
 knowledge, with citations and confidence scores.
 
-**Status: Phases 0-4 implemented — a working end-to-end MVP.**
+**Status: Phases 0-8 implemented — a working end-to-end product.**
 
 - **Phase 0** — infrastructure scaffold (Docker Compose stack, Next.js shell,
   Prisma schema, worker placeholder).
@@ -22,11 +22,22 @@ knowledge, with citations and confidence scores.
   only from retrieved excerpts with inline citations and a confidence score,
   or a canned "I don't have that information" response when nothing relevant
   is found.
+- **Phase 5** — after ingestion, a second background job asks Claude for a
+  short summary and any key decisions stated in the document (non-blocking:
+  the document is already searchable regardless of whether this succeeds).
+- **Phase 6** — a per-workspace document library page (status, uploader,
+  summary, key decisions) with MANAGER+ soft-delete.
+- **Phase 7** — an ADMIN+ console for creating sub-workspaces and
+  granting/revoking roles by email.
+- **Phase 8** — per-workspace retention policies and per-document legal holds,
+  enforced by a daily scheduled job that soft-deletes expired documents while
+  skipping anything under an active hold.
 
-Not yet built: document summaries/key-decision extraction, workspace/role
-management UI (the API routes exist; there's no admin screen yet), retention
-policy enforcement, legal hold enforcement, and multi-conversation history per
-workspace (one conversation per user per workspace for now).
+Not yet built: multi-conversation history per workspace (one conversation per
+user per workspace for now), per-folder (as opposed to per-workspace)
+retention policies, and a UI for placing a hold on an entire workspace rather
+than a single document (the enforcement logic supports it; only the
+document-level "place hold" button is wired up).
 
 ## Compliance posture (read before adding dependencies)
 
@@ -123,7 +134,11 @@ compliance constraints this product is sold on.
    and ask a question about what you uploaded — you should get an answer
    with an inline citation and a confidence label. A question unrelated to
    the uploaded content should get "I don't have that information in the
-   knowledge base." instead of a hallucinated answer.
+   knowledge base." instead of a hallucinated answer. The workspace's
+   **Documents** page should show the upload with a status, and a short
+   AI-generated summary once the background summary job finishes. The
+   **Admin** page (visible to ADMIN+/FOUNDER) lets you create sub-workspaces
+   and grant/revoke roles by email, and set a retention policy in days.
 
 ## Project layout
 
@@ -131,10 +146,13 @@ compliance constraints this product is sold on.
 app/                        Next.js App Router
   signin/                   Google sign-in page
   workspaces/[id]/upload/   Upload UI (MANAGER+)
+  workspaces/[id]/documents/ Document library (status, summary, soft-delete)
+  workspaces/[id]/admin/    Sub-workspace + role + retention admin (ADMIN+)
   chat/[id]/                RAG chat UI
   api/auth/                 NextAuth route handler
-  api/workspaces/           Workspace create + role grant/revoke
+  api/workspaces/           Workspace create + role grant/revoke + retention
   api/documents/upload/     Upload endpoint -> enqueues a processing job
+  api/documents/[id]/       Soft-delete + legal-hold endpoints
   api/chat/                 Retrieval + Claude chat endpoint
 lib/                        Shared server code (Prisma client, auth config,
                              RBAC, audit log, storage, embeddings, retrieval,
@@ -147,7 +165,9 @@ prisma/schema.prisma          Full data model (workspaces, RBAC, documents,
                               chunks, retention/legal hold, audit log)
 prisma/migrations/            Hand-authored init migration (ltree/vector/HNSW)
 worker/                       pg-boss consumer: extract text -> chunk ->
-                              embed (Ollama) -> write DocumentChunk rows
+                              embed (Ollama) -> write DocumentChunk rows, then
+                              a second job generates a summary/key decisions;
+                              a daily scheduled job enforces retention policies
 Dockerfile                    Next.js dev container
 Dockerfile.worker             Worker container
 docker-compose.yml             postgres + ollama + web + worker
@@ -155,8 +175,6 @@ docker-compose.yml             postgres + ollama + web + worker
 
 ## Notes
 
-- This directory is not yet a git repository; `.gitignore` is pre-staged for
-  when it becomes one. Never commit `.env`.
 - Postgres dev credentials (`secondbrain`/`secondbrain`) are hardcoded in
   `docker-compose.yml` for local development only.
 - RBAC precedence: a role granted at a workspace applies to that workspace and
@@ -164,8 +182,13 @@ docker-compose.yml             postgres + ollama + web + worker
   applicable level, the highest-ranked one wins (a narrower grant can never
   silently downgrade access inherited from a broader one). See `lib/rbac.ts`.
 - Uploading requires `MANAGER` or higher in the target workspace; chatting
-  requires any assigned role.
-- pg-boss's exact `Job` retry-field casing (`retryCount` vs `retrycount`) is
-  read defensively in `worker/jobs/processDocument.ts` since it was written
-  without being able to run `npm install` and check the installed version's
-  types directly — verify against `node_modules/pg-boss` after installing.
+  requires any assigned role; creating sub-workspaces, granting/revoking
+  roles, setting retention, and placing/releasing legal holds all require
+  `ADMIN` or higher.
+- A legal hold (workspace-wide or on a specific document) blocks both manual
+  deletion and automatic retention deletion of the document(s) it covers.
+- pg-boss's exact `Job` retry-field casing (`retryCount` vs `retrycount`) and
+  its `schedule()` cron API are read/used defensively/as-documented in the
+  worker since this was written without being able to run `npm install` and
+  check the installed version's types directly — verify against
+  `node_modules/pg-boss` after installing.

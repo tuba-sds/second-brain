@@ -5,6 +5,7 @@ import { embedChunks, getEmbeddingModel } from "../../lib/embeddings";
 import { extractText } from "../lib/extractText";
 import { chunkText } from "../lib/chunk";
 import { getDocumentForProcessing, processDocumentTx, markFailed } from "../lib/db";
+import { enqueueGenerateSummary } from "../lib/boss";
 import type { ProcessDocumentPayload } from "../../lib/queue";
 
 const EMBEDDING_MODEL_VERSION = "1"; // bump if OLLAMA_EMBEDDING_MODEL's weights change meaningfully
@@ -38,6 +39,12 @@ export async function processDocumentHandler(job: PgBoss.Job<ProcessDocumentPayl
     );
 
     console.log(`[worker] document ${documentId} processed: ${chunks.length} chunks`);
+
+    // Best-effort, non-blocking: the document is already READY/searchable
+    // regardless of whether summary generation succeeds.
+    await enqueueGenerateSummary(documentId).catch((err) =>
+      console.error(`[worker] failed to enqueue summary for ${documentId}:`, err)
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[worker] document ${documentId} failed:`, message);
