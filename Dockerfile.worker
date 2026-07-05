@@ -1,0 +1,12 @@
+# Placeholder worker container (Phase 0).
+# Later phases run pg-boss jobs here for parsing/embedding documents.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY . .
+
+CMD ["npx", "ts-node", "--project", "worker/tsconfig.json", "worker/index.ts"]

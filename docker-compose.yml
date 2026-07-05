@@ -1,0 +1,100 @@
+name: second-brain
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: second-brain-postgres
+    env_file:
+      - .env
+    environment:
+      # Dev-only credentials. These must match DATABASE_URL in .env.
+      POSTGRES_USER: secondbrain
+      POSTGRES_PASSWORD: secondbrain
+      POSTGRES_DB: secondbrain
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Init scripts run once on first boot of an empty data volume.
+      # Creates the vector, ltree, and pg_trgm extensions.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secondbrain -d secondbrain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - secondbrain
+
+  # Local embeddings runtime. No hosted embeddings APIs are used anywhere.
+  #
+  # NOTE: GPU passthrough for Ollama is unreliable on Windows Docker Desktop
+  # (WSL2 CUDA support varies by driver/setup). CPU-only is the safe default;
+  # do not add a `deploy.resources.reservations.devices` GPU block unless you
+  # have verified GPU support on your machine.
+  ollama:
+    image: ollama/ollama
+    container_name: second-brain-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - secondbrain
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: second-brain-web
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network the DB host is `postgres`, not localhost.
+      DATABASE_URL: postgresql://secondbrain:secondbrain@postgres:5432/secondbrain
+      OLLAMA_BASE_URL: http://ollama:11434
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount the repo for hot reload in dev mode...
+      - .:/app
+      # ...but keep the container's own node_modules (Linux binaries).
+      - /app/node_modules
+      # Uploaded files (local disk only — see FILE_STORAGE_PATH). Shared with
+      # `worker` below so it can read back what `web` writes.
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - secondbrain
+
+  # Document parsing / chunking / embedding job runner (pg-boss + Ollama).
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: second-brain-worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://secondbrain:secondbrain@postgres:5432/secondbrain
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - secondbrain
+
+volumes:
+  postgres_data:
+  ollama_models:
+  uploads_data:
+
+networks:
+  secondbrain:
+    driver: bridge

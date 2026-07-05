@@ -1,0 +1,250 @@
+// Second Brain — Prisma schema
+//
+// Notes on Postgres-native types Prisma cannot fully model:
+//  - DocumentChunk.embedding uses Unsupported("vector(768)") (pgvector), with an
+//    HNSW (vector_cosine_ops) index — see prisma/migrations/20260706000000_init.
+//  - Workspace.path is modeled here as a plain String, but the actual Postgres
+//    column type is `ltree` (materialized path, with ancestor/descendant
+//    operators used by lib/rbac.ts) with a GiST index — also hand-added in that
+//    same migration. Postgres's ltree extension registers an assignment cast
+//    to/from text, so Prisma Client's normal string reads/writes on this field
+//    keep working unchanged.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceType {
+  ORG
+  DEPARTMENT
+  CLIENT
+}
+
+enum Role {
+  FOUNDER
+  ADMIN
+  MANAGER
+  TEAM_MEMBER
+}
+
+enum DocumentStatus {
+  PROCESSING
+  READY
+  FAILED
+  SOFT_DELETED
+}
+
+model Workspace {
+  id                String        @id @default(cuid())
+  parentWorkspaceId String?
+  parent            Workspace?    @relation("WorkspaceTree", fields: [parentWorkspaceId], references: [id])
+  children          Workspace[]   @relation("WorkspaceTree")
+  type              WorkspaceType
+  name              String
+  // Real column type is Postgres `ltree` (see migration note at top of file).
+  // Materialized path, e.g. "org.department.client".
+  path              String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  roleAssignments RoleAssignment[]
+  folders         Folder[]
+  documents       Document[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  googleId  String   @unique
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  roleAssignments RoleAssignment[]
+}
+
+model RoleAssignment {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  role        Role
+  grantedById String?
+  grantedAt   DateTime  @default(now())
+  expiresAt   DateTime?
+
+  @@unique([userId, workspaceId])
+}
+
+model Folder {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  name        String
+  createdAt   DateTime  @default(now())
+
+  documents Document[]
+}
+
+// Retention/deletion policy scaffolding. The policy engine ships in a later
+// phase, but the schema exists now so retention data is captured from day one.
+model RetentionPolicy {
+  id            String   @id @default(cuid())
+  workspaceId   String?
+  folderId      String?
+  retentionDays Int
+  createdAt     DateTime @default(now())
+}
+
+model LegalHold {
+  id          String    @id @default(cuid())
+  workspaceId String?
+  documentId  String?
+  reason      String
+  createdById String
+  createdAt   DateTime  @default(now())
+  releasedAt  DateTime?
+}
+
+model Document {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id])
+  folderId         String?
+  folder           Folder?        @relation(fields: [folderId], references: [id])
+  uploaderId       String
+  sourceType       String
+  storagePath      String
+  displayTitle     String
+  originalFilename String
+  documentDate     DateTime?
+  status           DocumentStatus @default(PROCESSING)
+  // Set by the ingestion worker when status transitions to FAILED, so the
+  // failure reason is visible without digging through AuditLog.
+  processingError  String?
+  // Soft delete: content is hidden, not destroyed, until retention/legal-hold
+  // checks allow hard deletion.
+  deletedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  versions     DocumentVersion[]
+  chunks       DocumentChunk[]
+  summary      DocumentSummary?
+  keyDecisions KeyDecision[]
+}
+
+model DocumentVersion {
+  id            String   @id @default(cuid())
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id])
+  versionNumber Int
+  storagePath   String
+  createdAt     DateTime @default(now())
+}
+
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  text       String
+  // pgvector column (Unsupported escape hatch — Prisma has no native vector
+  // type). Written only via raw SQL (worker/lib/db.ts); the HNSW
+  // vector_cosine_ops index lives in prisma/migrations/20260706000000_init.
+  embedding              Unsupported("vector(768)")?
+  embeddingModel         String?
+  embeddingModelVersion  String?
+  pageOrSectionRef       String?
+  createdAt              DateTime @default(now())
+}
+
+model DocumentSummary {
+  id         String   @id @default(cuid())
+  documentId String   @unique
+  document   Document @relation(fields: [documentId], references: [id])
+  summary    String
+  createdAt  DateTime @default(now())
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+}
+
+model DocumentTag {
+  documentId String
+  tagId      String
+
+  @@id([documentId, tagId])
+}
+
+model KeyDecision {
+  id           String    @id @default(cuid())
+  documentId   String
+  document     Document  @relation(fields: [documentId], references: [id])
+  decisionText String
+  decisionDate DateTime?
+  confidence   Float?
+  createdAt    DateTime  @default(now())
+}
+
+model Conversation {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  createdAt   DateTime @default(now())
+
+  messages Message[]
+}
+
+model Message {
+  id              String       @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+  role            String
+  content         String
+  confidenceScore Float?
+  createdAt       DateTime     @default(now())
+
+  citations MessageCitation[]
+}
+
+model MessageCitation {
+  id              String  @id @default(cuid())
+  messageId       String
+  message         Message @relation(fields: [messageId], references: [id])
+  documentChunkId String?
+  documentId      String?
+  relevanceScore  Float?
+  quotedExcerpt   String?
+}
+
+model SearchQuery {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  queryText   String
+  topScore    Float?
+  resultCount Int?
+  createdAt   DateTime @default(now())
+}
+
+// Audit log rows deliberately have NO Prisma relations (and therefore no
+// cascading foreign keys) to User/Document/Workspace. Actor and resource IDs
+// are stored as plain strings so deleting content or users can never delete
+// or orphan-cascade audit history.
+model AuditLog {
+  id               String   @id @default(cuid())
+  actorId          String?
+  actionType       String
+  resourceType     String?
+  resourceSnapshot Json?
+  workspaceId      String?
+  createdAt        DateTime @default(now())
+  metadata         Json?
+}
