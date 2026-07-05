@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Second Brain — Your Company's AI Memory</title>
+<meta name="description" content="A friendly introduction to Second Brain: an AI knowledge base your whole company can trust.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --bg-alt: #f2efe9;
+    --ink: #1c1a17;
+    --ink-soft: #55504a;
+    --accent: #1f6f5c;
+    --accent-soft: #dcece6;
+    --card: #ffffff;
+    --border: #e6e1d8;
+    --amber: #b8722a;
+    --shadow: 0 1px 2px rgba(28,26,23,0.04), 0 8px 24px rgba(28,26,23,0.06);
+  }
+  :root[data-theme="dark"] {
+    --bg: #15140f;
+    --bg-alt: #1c1a15;
+    --ink: #f3f1ea;
+    --ink-soft: #b8b2a5;
+    --accent: #5fc9ac;
+    --accent-soft: #1f3630;
+    --card: #201e18;
+    --border: #33302a;
+    --amber: #e2a05a;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px rgba(0,0,0,0.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15140f;
+      --bg-alt: #1c1a15;
+      --ink: #f3f1ea;
+      --ink-soft: #b8b2a5;
+      --accent: #5fc9ac;
+      --accent-soft: #1f3630;
+      --card: #201e18;
+      --border: #33302a;
+      --amber: #e2a05a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px rgba(0,0,0,0.35);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    scroll-behavior: smooth;
+  }
+  body {
+    height: 100vh;
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+  }
+  section {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    padding: 6rem 6vw;
+    position: relative;
+  }
+  section.alt { background: var(--bg-alt); }
+  .wrap { max-width: 920px; width: 100%; margin: 0 auto; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.25rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 1.5rem; height: 2px;
+    background: var(--accent);
+    display: inline-block;
+  }
+  h1 {
+    font-size: clamp(2.4rem, 6vw, 4.2rem);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0 0 1.25rem;
+    font-weight: 700;
+  }
+  h2 {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin: 0 0 1.5rem;
+    font-weight: 700;
+  }
+  p.lead {
+    font-size: clamp(1.05rem, 2vw, 1.35rem);
+    color: var(--ink-soft);
+    line-height: 1.55;
+    max-width: 60ch;
+  }
+  .tag {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: .85rem;
+    padding: .3rem .75rem;
+    border-radius: 999px;
+    margin-bottom: 1.5rem;
+  }
+  .grid {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 2.5rem;
+  }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 760px) {
+    .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
+    section { padding: 5rem 6vw 7rem; }
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 1.75rem;
+    box-shadow: var(--shadow);
+  }
+  .card .icon { font-size: 1.75rem; margin-bottom: .75rem; display: block; }
+  .card h3 { margin: 0 0 .5rem; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: .92rem; line-height: 1.5; }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 2.5rem;
+  }
+  .flow .step {
+    flex: 1;
+    min-width: 180px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: var(--shadow);
+  }
+  .flow .step .num {
+    width: 2rem; height: 2rem; line-height: 2rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-weight: 700;
+    font-size: .9rem;
+    margin: 0 auto .75rem;
+  }
+  .flow .step .icon { font-size: 1.8rem; margin-bottom: .5rem; display: block; }
+  .flow .step h3 { margin: 0 0 .4rem; font-size: 1rem; }
+  .flow .step p { margin: 0; font-size: .85rem; color: var(--ink-soft); }
+  .flow .arrow {
+    font-size: 1.5rem;
+    color: var(--ink-soft);
+    opacity: .5;
+  }
+  @media (max-width: 760px) {
+    .flow { flex-direction: column; }
+    .flow .arrow { transform: rotate(90deg); }
+  }
+
+  /* Role hierarchy */
+  .roles { display: flex; flex-direction: column; gap: .9rem; margin-top: 2.5rem; }
+  .role-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 1.25rem;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    box-shadow: var(--shadow);
+  }
+  .role-row .badge {
+    font-weight: 700;
+    font-size: .95rem;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .role-row .badge .dot {
+    width: .6rem; height: .6rem; border-radius: 50%;
+  }
+  .role-row p { margin: 0; color: var(--ink-soft); font-size: .92rem; }
+  @media (max-width: 640px) {
+    .role-row { grid-template-columns: 1fr; gap: .4rem; }
+  }
+
+  /* Workspace tree */
+  .tree { margin-top: 2.5rem; font-size: .95rem; }
+  .tree ul { list-style: none; margin: 0; padding-left: 1.75rem; border-left: 1px dashed var(--border); }
+  .tree > ul { padding-left: 0; border-left: none; }
+  .tree li { position: relative; padding: .5rem 0 .5rem 1.5rem; }
+  .tree li::before {
+    content: "";
+    position: absolute; left: 0; top: 1.1rem;
+    width: 1.1rem; height: 1px;
+    background: var(--border);
+  }
+  .tree .node {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .5rem .9rem;
+    box-shadow: var(--shadow);
+    font-weight: 600;
+  }
+  .tree .node.small { font-weight: 500; color: var(--ink-soft); }
+
+  blockquote.confidence {
+    margin: 2.5rem 0 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 1.75rem 2rem;
+    box-shadow: var(--shadow);
+  }
+  blockquote.confidence .q { font-size: 1.05rem; color: var(--ink-soft); margin-bottom: 1rem; }
+  blockquote.confidence .a { font-size: 1.1rem; line-height: 1.6; }
+  blockquote.confidence .cite {
+    display: inline-block; margin-top: .75rem;
+    font-size: .8rem; color: var(--accent); font-weight: 600;
+    background: var(--accent-soft); padding: .25rem .6rem; border-radius: 8px;
+  }
+  blockquote.confidence .pill {
+    display: inline-block; margin-top: .5rem; margin-left: .5rem;
+    font-size: .8rem; color: var(--amber); font-weight: 600;
+  }
+
+  footer.hero-foot {
+    margin-top: 2.5rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .8rem 1.4rem;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: .95rem;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    color: var(--ink);
+    background: var(--card);
+    transition: transform .15s ease;
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:hover { transform: translateY(-1px); }
+
+  /* Nav dots */
+  nav.dots {
+    position: fixed;
+    right: 1.5rem; top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    z-index: 50;
+  }
+  nav.dots button {
+    width: .6rem; height: .6rem;
+    border-radius: 50%;
+    background: var(--border);
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background .2s ease, transform .2s ease;
+  }
+  nav.dots button.active { background: var(--accent); transform: scale(1.3); }
+  @media (max-width: 640px) { nav.dots { display: none; } }
+
+  .theme-toggle {
+    position: fixed;
+    top: 1.25rem; right: 1.25rem;
+    z-index: 50;
+    width: 2.5rem; height: 2.5rem;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--ink);
+    cursor: pointer;
+    font-size: 1.1rem;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow);
+  }
+
+  .progress-label {
+    position: fixed;
+    bottom: 1.5rem; left: 1.5rem;
+    font-size: .78rem;
+    color: var(--ink-soft);
+    z-index: 50;
+    letter-spacing: .05em;
+  }
+
+  .footnote {
+    margin-top: 3rem;
+    font-size: .82rem;
+    color: var(--ink-soft);
+  }
+
+  .kicker-num {
+    font-size: clamp(3rem, 8vw, 5rem);
+    font-weight: 800;
+    color: var(--accent-soft);
+    line-height: 1;
+    position: absolute;
+    top: 3rem; right: 6vw;
+    opacity: .6;
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">🌓</button>
+<nav class="dots" id="dots" aria-label="Slide navigation"></nav>
+<div class="progress-label" id="progressLabel">01 / 10</div>
+
+<!-- 1: Hero -->
+<section id="s1">
+  <div class="wrap">
+    <div class="eyebrow">Second Brain</div>
+    <h1>Your company's knowledge,<br>always at hand.</h1>
+    <p class="lead">
+      An AI assistant that only knows what <em>your</em> company has taught it —
+      every uploaded document, policy, and past decision — and never makes
+      things up.
+    </p>
+    <footer class="hero-foot">
+      <a class="btn primary" href="https://github.com/tuba-sds/second-brain" target="_blank" rel="noopener">View the project ↗</a>
+      <a class="btn" href="#s2">Scroll to explore ↓</a>
+    </footer>
+  </div>
+</section>
+
+<!-- 2: The problem -->
+<section class="alt" id="s2">
+  <div class="wrap">
+    <div class="tag">The problem</div>
+    <h2>Knowledge walks out the door every day.</h2>
+    <p class="lead">Important context lives scattered across inboxes, chat threads, and
+      people's memories — and disappears the moment someone's on vacation,
+      changes teams, or leaves the company.</p>
+    <div class="grid cols-3">
+      <div class="card">
+        <span class="icon">📥</span>
+        <h3>Buried in email</h3>
+        <p>Decisions and policies get made once, then forgotten in a thread no one can find again.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🙋</span>
+        <h3>"Ask Sarah, she knows"</h3>
+        <p>Institutional knowledge lives in a few people's heads instead of somewhere searchable.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🌀</span>
+        <h3>New hires start from zero</h3>
+        <p>Onboarding means re-explaining things that were already written down somewhere, once.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3: How it works -->
+<section id="s3">
+  <div class="wrap">
+    <div class="tag">How it works</div>
+    <h2>Three simple steps.</h2>
+    <div class="flow">
+      <div class="step">
+        <span class="num">1</span>
+        <span class="icon">📤</span>
+        <h3>Upload</h3>
+        <p>A manager uploads a document — a policy, a contract, meeting notes, anything.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <span class="num">2</span>
+        <span class="icon">🧠</span>
+        <h3>Second Brain reads it</h3>
+        <p>It quietly reads, organizes, and summarizes the document in the background.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <span class="num">3</span>
+        <span class="icon">💬</span>
+        <h3>Anyone can ask</h3>
+        <p>Employees ask questions in plain English and get answers pulled straight from it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4: Trustworthy answers -->
+<section class="alt" id="s4">
+  <div class="wrap">
+    <div class="tag">Answers you can trust</div>
+    <h2>It never makes things up.</h2>
+    <p class="lead">Second Brain only answers from documents your company has actually
+      uploaded. Every answer shows its sources and how confident it is —
+      and if the answer isn't in there, it says so instead of guessing.</p>
+    <blockquote class="confidence">
+      <div class="q">"What's our policy on remote work during onboarding?"</div>
+      <div class="a">New hires may work remotely during their first 90 days with
+        manager approval, after which on-site presence is expected three
+        days a week. <span class="cite">Source: Remote Work Policy 2025</span></div>
+      <div class="pill">● High confidence</div>
+    </blockquote>
+  </div>
+</section>
+
+<!-- 5: Workspaces -->
+<section id="s5">
+  <div class="wrap">
+    <div class="tag">Organized your way</div>
+    <h2>Knowledge organized like your company is.</h2>
+    <p class="lead">Documents live inside workspaces that mirror your real structure —
+      the whole organization, individual departments, or specific clients —
+      so people only see what's relevant to them.</p>
+    <div class="tree">
+      <ul>
+        <li><span class="node">🏢 Acme Inc. (Organization)</span>
+          <ul>
+            <li><span class="node small">🛠️ Engineering</span></li>
+            <li><span class="node small">💼 Sales</span>
+              <ul>
+                <li><span class="node small">🤝 Client: Northwind</span></li>
+                <li><span class="node small">🤝 Client: Globex</span></li>
+              </ul>
+            </li>
+            <li><span class="node small">🎧 Support</span></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 6: Role hierarchy -->
+<section class="alt" id="s6">
+  <div class="wrap">
+    <div class="tag">Who can do what</div>
+    <h2>A clear hierarchy, so access is never a guessing game.</h2>
+    <p class="lead">Every person is given exactly the level of access they need — and
+      access granted higher up the org chart naturally applies to everything
+      underneath it, so permissions never need to be set up twice.</p>
+    <div class="roles">
+      <div class="role-row">
+        <div class="badge"><span class="dot" style="background:#c25b3f"></span>Founder</div>
+        <p>Full control of the entire organization — every workspace, every setting, from day one.</p>
+      </div>
+      <div class="role-row">
+        <div class="badge"><span class="dot" style="background:#b8722a"></span>Admin</div>
+        <p>Manages a workspace: creates sub-teams or client spaces, grants and revokes access, sets retention rules.</p>
+      </div>
+      <div class="role-row">
+        <div class="badge"><span class="dot" style="background:#1f6f5c"></span>Manager</div>
+        <p>Uploads and manages documents for their team, plus everything a team member can do.</p>
+      </div>
+      <div class="role-row">
+        <div class="badge"><span class="dot" style="background:#6b7280"></span>Team member</div>
+        <p>Asks questions and gets trustworthy, cited answers from everything they have access to.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7: Document intelligence -->
+<section id="s7">
+  <div class="wrap">
+    <div class="tag">Beyond search</div>
+    <h2>It reads the fine print, so people don't have to.</h2>
+    <p class="lead">The moment a document finishes uploading, Second Brain quietly
+      writes a short summary and pulls out any concrete decisions it finds
+      — so the gist is visible at a glance, without opening the file.</p>
+    <div class="grid cols-2">
+      <div class="card">
+        <span class="icon">📝</span>
+        <h3>Instant summaries</h3>
+        <p>A plain-language summary appears automatically next to every document in the library.</p>
+      </div>
+      <div class="card">
+        <span class="icon">📌</span>
+        <h3>Key decisions surfaced</h3>
+        <p>Concrete decisions buried in long documents are pulled out and listed separately.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8: Admin & compliance -->
+<section class="alt" id="s8">
+  <div class="wrap">
+    <div class="tag">Built for real companies</div>
+    <h2>Compliance and governance, built in.</h2>
+    <div class="grid cols-3">
+      <div class="card">
+        <span class="icon">🗓️</span>
+        <h3>Retention policies</h3>
+        <p>Set how long documents should be kept — old ones are automatically cleaned up on schedule.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🔒</span>
+        <h3>Legal holds</h3>
+        <p>Freeze a document (or a whole workspace) so it can't be deleted while it's needed for a legal matter.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🧾</span>
+        <h3>Full audit trail</h3>
+        <p>Every sign-in, upload, access grant, and deletion is permanently logged — who, what, and when.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9: Security -->
+<section id="s9">
+  <div class="wrap">
+    <div class="tag">Privacy first</div>
+    <h2>Your documents never leave your servers.</h2>
+    <p class="lead">Second Brain is self-hosted by design. Files are stored on your own
+      infrastructure — never a third-party cloud bucket — and the AI that
+      reads them to build search runs locally too. The only outside services
+      involved are Google (for signing in) and Anthropic's Claude (to have
+      the conversation) — nothing else ever sees your data.</p>
+    <div class="grid cols-2">
+      <div class="card">
+        <span class="icon">🏠</span>
+        <h3>Self-hosted storage</h3>
+        <p>Documents live on disk that your company controls, not a shared cloud service.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🔍</span>
+        <h3>Local search engine</h3>
+        <p>The technology that makes documents searchable runs entirely on your own servers.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10: Closing -->
+<section class="alt" id="s10">
+  <div class="wrap">
+    <div class="eyebrow">Second Brain</div>
+    <h2>Give your team a colleague who's read everything — and never forgets.</h2>
+    <p class="lead">One place to ask, one trustworthy source of answers, and full
+      control over who sees what.</p>
+    <footer class="hero-foot">
+      <a class="btn primary" href="https://github.com/tuba-sds/second-brain" target="_blank" rel="noopener">Explore the project on GitHub ↗</a>
+    </footer>
+    <p class="footnote">Built with Next.js, Postgres + pgvector, Ollama, and Claude.</p>
+  </div>
+</section>
+
+<script>
+  const sections = Array.from(document.querySelectorAll('section'));
+  const dotsNav = document.getElementById('dots');
+  const progressLabel = document.getElementById('progressLabel');
+
+  sections.forEach((sec, i) => {
+    const btn = document.createElement('button');
+    btn.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+    btn.addEventListener('click', () => sec.scrollIntoView({ behavior: 'smooth' }));
+    dotsNav.appendChild(btn);
+  });
+  const dotButtons = Array.from(dotsNav.children);
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        const idx = sections.indexOf(entry.target);
+        dotButtons.forEach((b, i) => b.classList.toggle('active', i === idx));
+        progressLabel.textContent = String(idx + 1).padStart(2, '0') + ' / ' + sections.length;
+      }
+    });
+  }, { threshold: 0.6 });
+  sections.forEach((sec) => observer.observe(sec));
+
+  // Theme toggle: cycles system -> light -> dark -> system
+  const root = document.documentElement;
+  const toggle = document.getElementById('themeToggle');
+  function applyStoredTheme() {
+    const saved = localStorage.getItem('sb-theme');
+    if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+  }
+  applyStoredTheme();
+  toggle.addEventListener('click', () => {
+    const current = root.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : current === 'light' ? null : 'dark';
+    if (next) { root.setAttribute('data-theme', next); localStorage.setItem('sb-theme', next); }
+    else { root.removeAttribute('data-theme'); localStorage.removeItem('sb-theme'); }
+  });
+</script>
+
+</body>
+</html>
